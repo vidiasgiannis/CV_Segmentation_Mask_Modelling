@@ -30,6 +30,8 @@ class OxfordPetDataset:
         )
         
         self.num_classes = self.ds_info.features['label'].num_classes
+
+        # Function to obtain the name for the label integer
         self.get_label_name = self.ds_info.features['label'].int2str
         
         print(f'Number of classes: {self.num_classes}')
@@ -58,11 +60,19 @@ def get_value_counts(ds):
     label_counts = pd.Series(label_list).value_counts(sort=True)
     print(label_counts)
 
-def view_image(dataset, ds_info):
-    # Function to obtain the name for the label integer
-    get_label_name = ds_info.features['label'].int2str
+def view_image(dataset, ds_info, get_label_name):
     # Build the custom function to display image and label name
     image, label = next(iter(dataset))
     print('Image shape: ', image.shape)
     plt.imshow(image)
     _ = plt.title(get_label_name(label))
+
+
+# resize and normalize images
+def resize_normalize(data, input_shape=(128, 128)):
+    # Resize and normalize
+    image = tf.image.resize(data['image'], input_shape)
+    image = tf.cast(image, tf.float32) / 255.0
+    mask = tf.image.resize(data['segmentation_mask'], input_shape)
+    mask = tf.cast(mask, tf.float32) / 255.0
+    return image, mask
