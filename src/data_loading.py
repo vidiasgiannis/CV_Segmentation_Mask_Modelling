@@ -42,6 +42,12 @@ class OxfordPetDataset:
         print(f'Number of validation samples: {self.num_val_examples}')
         print(f'Number of test samples: {self.num_test_examples}')
 
+    def one_hot_encoding(self):
+        self.train = self.train_raw.map(lambda image, label: (image, tf.one_hot(label, self.num_classes)))
+        self.val = self.val_raw.map(lambda image, label: (image, tf.one_hot(label, self.num_classes)))
+        self.test = self.test_raw.map(lambda image, label: (image, tf.one_hot(label, self.num_classes)))
+
+
 def show_examples(train_raw, ds_info):
     """Displays example images from the dataset."""
     tfds.show_examples(train_raw, ds_info, image_key='image')
