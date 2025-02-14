@@ -4,7 +4,7 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 import matplotlib.pyplot as plt
 
-def unet_model(input_shape=(128, 128, 3)):
+def UNet_model(input_shape=(128, 128, 3)):
     inputs = tf.keras.Input(shape=input_shape)
     
     # Encoder
