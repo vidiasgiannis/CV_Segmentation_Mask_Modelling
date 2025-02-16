@@ -5,7 +5,7 @@ from tensorflow.keras import layers
 from keras import callbacks
 
 # Function to get all augmentation layers together
-def augmentation_layers():
+def augmentation_layers_geometric():
     return keras.Sequential([
         # Geometric augmentations
         layers.RandomFlip('horizontal'),
@@ -14,7 +14,10 @@ def augmentation_layers():
             width_factor=0.1,
             fill_mode='constant'  # Important for mask integrity
         ),
-        
+    ])
+
+def augmentation_layers_color():
+    return keras.Sequential([
         # Color augmentations (enhanced from original)
         layers.RandomBrightness(factor=0.2, value_range=(0,1)),
         layers.RandomContrast(factor=0.1),
