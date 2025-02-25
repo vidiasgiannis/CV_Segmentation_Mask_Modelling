@@ -21,8 +21,8 @@ def augmentation_layers_color():
         # Color augmentations (enhanced from original)
         layers.RandomBrightness(factor=0.2, value_range=(0,1)),
         layers.RandomContrast(factor=0.1),
-        layers.RandomSaturation(factor=0.5),
-        layers.RandomHue(factor=0.1, value_range=(0,1)),
+        # layers.RandomSaturation(factor=0.5),
+        # layers.RandomHue(factor=0.1, value_range=(0,1)),
     ])
 
 # functions for single augmentation
