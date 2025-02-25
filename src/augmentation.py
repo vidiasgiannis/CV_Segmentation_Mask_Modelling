@@ -21,8 +21,8 @@ def augmentation_layers_color():
         # Color augmentations (enhanced from original)
         layers.RandomBrightness(factor=0.2, value_range=(0,1)),
         layers.RandomContrast(factor=0.1),
-        layers.RandomSaturation(factor=0.5),
-        layers.RandomHue(factor=0.1, value_range=(0,1)),
+        layers.Lambda(random_saturation),
+        layers.Lambda(random_hue),
     ])
 
 # functions for single augmentation
@@ -42,8 +42,8 @@ def random_brightness():
 def random_contrast():
     return layers.RandomContrast(factor=0.2)
 
-def random_saturation():
-    return layers.RandomSaturation(factor=0.2)
+def random_saturation(x):
+    return tf.image.random_saturation(x, lower=0.5, upper=1.5)
 
-def random_hue():
-    return layers.RandomHue(factor=0.1, value_range=(0,1))
+def random_hue(x):
+    return tf.image.random_hue(x, max_delta=0.1)
