@@ -1,15 +1,30 @@
 import tensorflow as tf
 from tensorflow.keras import backend as K
- 
-# Intersection over Union (IoU)
-def iou_metric(y_true, y_pred):
-    y_pred = tf.argmax(y_pred, axis=-1)  # Convert softmax output to class labels
-    y_true = tf.cast(tf.squeeze(y_true, axis=-1), tf.int64)  # Convert to int64
- 
-    intersection = tf.reduce_sum(tf.cast(y_pred == y_true, tf.float32))
-    union = tf.reduce_sum(tf.cast((y_pred > 0) | (y_true > 0), tf.float32))
- 
-    return intersection / (union + K.epsilon())  # Avoid division by zero
+
+import tensorflow as tf
+
+class MeanIoUWrapper(tf.keras.metrics.MeanIoU):
+    def __init__(self, num_classes, name='mean_iou', **kwargs):
+        super().__init__(num_classes=num_classes, name=name, **kwargs)
+        self.num_classes = num_classes
+    
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        # Convert probability outputs to integer predictions.
+        y_pred = tf.argmax(y_pred, axis=-1)
+        # Squeeze y_true if it has an extra channel dimension.
+        if len(tf.shape(y_true)) == len(tf.shape(y_pred)) + 1:
+            y_true = tf.squeeze(y_true, axis=-1)
+        return super().update_state(y_true, y_pred, sample_weight)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({'num_classes': self.num_classes})
+        return config
+
+
+
+
+
  
 # Dice Coefficient (F1 Score)
 def dice_coefficient(y_true, y_pred):
