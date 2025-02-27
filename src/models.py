@@ -4,6 +4,10 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+###################
+#     task 2a     #
+###################
 def UNet_model(input_shape=(128, 128, 3)):
     inputs = tf.keras.Input(shape=input_shape)
     
@@ -48,12 +52,66 @@ def UNet_model(input_shape=(128, 128, 3)):
     up9 = layers.concatenate([up9, conv1])
     conv9 = layers.Conv2D(64, 3, activation='relu', padding='same')(up9)
     conv9 = layers.Conv2D(64, 3, activation='relu', padding='same')(conv9)
-    
-    # Output layer
-    outputs = layers.Conv2D(1, 1, activation='sigmoid')(conv9)
-    
+
+    #Output
+    outputs = layers.Conv2D(3, 1, activation='softmax')(conv9)
     model = models.Model(inputs, outputs)
     return model
+
+# import tensorflow as tf
+# from tensorflow.keras import layers, models
+
+# # def UNet_model(input_shape=(128, 128, 3)):
+#     inputs = tf.keras.Input(shape=input_shape)
+    
+#     # Encoder
+#     conv1 = layers.Conv2D(32, 3, activation='relu', padding='same')(inputs)  # Reduced filters
+#     conv1 = layers.Conv2D(32, 3, activation='relu', padding='same')(conv1)
+#     pool1 = layers.MaxPooling2D(pool_size=(2, 2))(conv1)  # 64x64
+    
+#     conv2 = layers.Conv2D(64, 3, activation='relu', padding='same')(pool1)  # Reduced filters
+#     conv2 = layers.Conv2D(64, 3, activation='relu', padding='same')(conv2)
+#     pool2 = layers.MaxPooling2D(pool_size=(2, 2))(conv2)  # 32x32
+    
+#     conv3 = layers.Conv2D(128, 3, activation='relu', padding='same')(pool2)  # Reduced filters
+#     conv3 = layers.Conv2D(128, 3, activation='relu', padding='same')(conv3)
+#     pool3 = layers.MaxPooling2D(pool_size=(2, 2))(conv3)  # 16x16
+    
+#     conv4 = layers.Conv2D(256, 3, activation='relu', padding='same')(pool3)  # Reduced filters
+#     conv4 = layers.Conv2D(256, 3, activation='relu', padding='same')(conv4)
+#     pool4 = layers.MaxPooling2D(pool_size=(2, 2))(conv4)  # 8x8
+    
+#     # Bottleneck
+#     bottleneck = layers.Conv2D(512, 3, activation='relu', padding='same')(pool4)
+#     bottleneck = layers.Conv2D(512, 3, activation='relu', padding='same')(bottleneck)
+    
+#     # Decoder with skip connections
+#     up1 = layers.Conv2DTranspose(256, 2, strides=(2, 2), padding='same')(bottleneck)  # 16x16
+#     up1 = layers.concatenate([up1, conv4])
+#     conv5 = layers.Conv2D(256, 3, activation='relu', padding='same')(up1)
+#     conv5 = layers.Conv2D(256, 3, activation='relu', padding='same')(conv5)
+    
+#     up2 = layers.Conv2DTranspose(128, 2, strides=(2, 2), padding='same')(conv5)  # 32x32
+#     up2 = layers.concatenate([up2, conv3])
+#     conv6 = layers.Conv2D(128, 3, activation='relu', padding='same')(up2)
+#     conv6 = layers.Conv2D(128, 3, activation='relu', padding='same')(conv6)
+    
+#     up3 = layers.Conv2DTranspose(64, 2, strides=(2, 2), padding='same')(conv6)  # 64x64
+#     up3 = layers.concatenate([up3, conv2])
+#     conv7 = layers.Conv2D(64, 3, activation='relu', padding='same')(up3)
+#     conv7 = layers.Conv2D(64, 3, activation='relu', padding='same')(conv7)
+    
+#     up4 = layers.Conv2DTranspose(32, 2, strides=(2, 2), padding='same')(conv7)  # 128x128
+#     up4 = layers.concatenate([up4, conv1])
+#     conv8 = layers.Conv2D(32, 3, activation='relu', padding='same')(up4)
+#     conv8 = layers.Conv2D(32, 3, activation='relu', padding='same')(conv8)
+    
+#     # Output (for multi-class segmentation)
+#     outputs = layers.Conv2D(3, 1, activation='softmax')(conv8)  # Softmax for multi-class
+    
+#     # U-Net model
+#     unet = models.Model(inputs, outputs, name='unet')
+#     return unet
 
 
 ###################
@@ -90,29 +148,105 @@ class Autoencoder(tf.keras.Model):
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
         return decoded
- 
-    # Define a segmentation decoder
-def build_segmentation_decoder(encoder):
-    inputs = layers.Input(shape=(256, 256, 3))  # Input image size
- 
-    # Use the pretrained encoder
+
+def build_segmentation_decoder(encoder, num_classes=3):
+    inputs = layers.Input(shape=(256, 256, 3))  # Input image
+
     x = encoder(inputs, training=False)  
- 
-    # Decoder (Upsampling layers to reconstruct segmentation mask)
     x = layers.Conv2DTranspose(256, (3, 3), activation='relu', padding='same')(x)
     x = layers.UpSampling2D((2, 2))(x)
     x = layers.Conv2DTranspose(128, (3, 3), activation='relu', padding='same')(x)
     x = layers.UpSampling2D((2, 2))(x)
     x = layers.Conv2DTranspose(64, (3, 3), activation='relu', padding='same')(x)
     x = layers.UpSampling2D((2, 2))(x)
-   
-    # Output segmentation mask (1 channel, sigmoid for binary segmentation)
-    outputs = layers.Conv2D(1, (1, 1), activation='sigmoid', padding='same')(x)
- 
-    # Create final model
+
+
+    outputs = layers.Conv2D(num_classes, 1, activation='softmax', padding='same')(x)
+
     model = models.Model(inputs, outputs)
     return model
+
+
+###################
+#     task 2c     #
+###################
+
+from tensorflow.keras.layers import Input, Resizing, Lambda, Conv2D, Conv2DTranspose, Activation, Reshape, Concatenate, UpSampling2D
+from transformers import TFCLIPVisionModel
  
+class CLIPEncoderLayer(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.clip_encoder = TFCLIPVisionModel.from_pretrained("openai/clip-vit-base-patch32")
+        self.clip_encoder.trainable = False
+ 
+    def call(self, inputs):
+        # The error occurs because the CLIP model expects pixel_values in NCHW format,
+        # but TensorFlow typically uses NHWC format
+        # Convert from NHWC (batch, height, width, channels) to NCHW (batch, channels, height, width)
+        pixel_values = tf.transpose(inputs, [0, 3, 1, 2])
+       
+        # Now pass the correctly formatted tensor to the CLIP encoder
+        outputs = self.clip_encoder(pixel_values=pixel_values)
+        return outputs.last_hidden_state
+       
+    # Add compute_output_shape method to help TensorFlow infer the output shape
+    def compute_output_shape(self, input_shape):
+        # The CLIP vision model output shape depends on the model configuration
+        # For clip-vit-base-patch32, with 224x224 input, the output shape is (batch_size, 50, 768)
+        # Where 50 = 49 patches (7x7) + 1 cls token, and 768 is the embedding dimension
+        batch_size = input_shape[0]
+        return (batch_size, 50, 768)
+ 
+def clip_segmentation_model(input_shape=(128, 128, 3)):
+    # Input layer
+    input_img = Input(shape=input_shape, name="input_image")
+ 
+    # Preprocessing
+    x = Resizing(224, 224, name="resize_input")(input_img)
+    def clip_normalize(x):
+        mean = [0.48145466, 0.4578275, 0.40821073]
+        std = [0.26862954, 0.26130258, 0.27577711]
+        # Normalize each channel
+        x_normalized = tf.stack([
+            (x[:, :, :, 0] - mean[0]) / std[0],
+            (x[:, :, :, 1] - mean[1]) / std[1],
+            (x[:, :, :, 2] - mean[2]) / std[2]
+        ], axis=3)
+        return x_normalized
+    x = Lambda(clip_normalize, name="clip_normalization")(x)
+ 
+    # Use the custom CLIP encoder layer
+    clip_encoder = CLIPEncoderLayer()
+    clip_features = clip_encoder(x)
+   
+    # Reshape the output for decoder
+    # Note: The shape will be (batch_size, 50, 768) where 50 = 49 patches (7x7) + 1 cls token
+    # We need to adjust the reshape operation to handle this correctly
+   
+    # Option 1: Skip the cls token and reshape just the patch embeddings
+    patch_features = Lambda(lambda x: x[:, 1:, :], name="remove_cls_token")(clip_features)
+    features = Reshape((7, 7, 768), name="reshape_features")(patch_features)
+   
+    # Decoder (you need to implement this part based on your needs)
+    # Here's a simple example decoder
+    x = Conv2D(256, 3, padding='same', activation='relu')(features)
+    x = UpSampling2D(size=(2, 2))(x)
+    x = Conv2D(128, 3, padding='same', activation='relu')(x)
+    x = UpSampling2D(size=(2, 2))(x)
+    x = Conv2D(64, 3, padding='same', activation='relu')(x)
+    x = UpSampling2D(size=(2, 2))(x)
+    x = Conv2D(32, 3, padding='same', activation='relu')(x)
+    x = UpSampling2D(size=(2, 2))(x)
+   
+    # Final output layer (adjust the number of classes as needed)
+    outputs = Conv2D(3, 1, activation='softmax')(x)
+   
+    # Resize output to match the input size if needed
+    if input_shape[0] != 224 or input_shape[1] != 224:
+        outputs = Resizing(input_shape[0], input_shape[1])(outputs)
+ 
+    return Model(inputs=input_img, outputs=outputs, name="CLIP_Segmentation")
 
 
 
