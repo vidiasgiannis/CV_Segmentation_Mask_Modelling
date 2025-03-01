@@ -55,17 +55,27 @@ class OxfordPetDataset:
         self.train_raw = self.train_raw.map(lambda example: resize_norm(example, resize_shape))
         self.val_raw = self.val_raw.map(lambda example: resize_norm(example, resize_shape))
         self.test_raw = self.test_raw.map(lambda example: resize_norm(example, resize_shape))
+
+    def mask_prep(self):
+        # Preprocess mask
+        self.train_raw = self.train_raw.map(lambda example: mask_preprocessing(example))
+        self.val_raw = self.val_raw.map(lambda example: mask_preprocessing(example))
+        self.test_raw = self.test_raw.map(lambda example: mask_preprocessing(example))
  
-# one-hot encoding of a dataset
-"""Converts the label of data dict to one-hot encoding while preserving the dictionary structure."""
- 
+
+
+#############One-hot encoding#############
+# Apply one-hot encoding to a single example
 def one_hot_encoding(example, num_classes):
     return {
         "image": example["image"],
         "label": tf.one_hot(example["label"], num_classes),
-        "segmentation_mask": example["segmentation_mask"]
+        "segmentation_mask": example["segmentation_mask"],
+        "species" : example["species"]
     }
  
+
+#############Resize and normalize#############
 # single image resize by bilinear interpolation
 def resize_norm_image(image, resize_shape):
     image = tf.image.resize(image, resize_shape, method=tf.image.ResizeMethod.BILINEAR)
@@ -81,12 +91,49 @@ def resize_mask(mask, resize_shape):
 # resize and normalize a dataset
 def resize_norm(example, resize_shape):
     # Resize and normalize
-    seg_mask = example["segmentation_mask"] -1 # Subtract 1 to make the classes start from 0
+    seg_mask = example["segmentation_mask"]
     return {
         "image": resize_norm_image(example["image"], resize_shape),
         "label": example['label'],
-        "segmentation_mask": resize_mask(seg_mask, resize_shape)
+        "segmentation_mask": resize_mask(seg_mask, resize_shape),
+        "species" : example["species"]
     }
+
+
+#############Mask weird preprocessing#############
+# masks: border -> background
+def border_to_background(mask):
+    threes_mask = tf.equal(mask, 3)
+    twos = tf.ones_like(mask) * 2
+    mask = tf.where(threes_mask, twos, mask)
+    
+    return mask
+
+# masks: cat (1) -> 0
+def animal_change(mask, species=1):
+    if species == 0:
+        ones_mask = tf.equal(mask, 1)
+        zeros = tf.zeros_like(mask)
+        mask = tf.where(ones_mask, zeros, mask)
+    
+    return mask
+
+def mask_preprocessing(example):
+    mask = example["segmentation_mask"]
+    species = example["species"]
+    label = example['label']
+    image = example['image']
+
+    mask = border_to_background(mask)
+    mask = animal_change(mask, species)
+
+    return {
+        "image": image,
+        "label": label,
+        "segmentation_mask": mask,
+        "species" :species
+    }
+###############################################
  
  
 def show_examples(train_raw, ds_info):
