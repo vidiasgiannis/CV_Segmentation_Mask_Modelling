@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.keras import backend as K
-
 import tensorflow as tf
 
 class MeanIoUWrapper(tf.keras.metrics.MeanIoU):
@@ -20,11 +19,6 @@ class MeanIoUWrapper(tf.keras.metrics.MeanIoU):
         config = super().get_config()
         config.update({'num_classes': self.num_classes})
         return config
-
-
-
-
-
  
 # Dice Coefficient (F1 Score)
 def dice_coefficient(y_true, y_pred):
