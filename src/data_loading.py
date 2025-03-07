@@ -6,6 +6,7 @@ import tensorflow_datasets as tfds
 from tensorflow import keras
 from tensorflow.keras import layers
 from keras import callbacks
+from point_segmentation import random_point, create_gaussian_heatmap
  
 class OxfordPetDataset:
     def __init__(self):
@@ -62,7 +63,11 @@ class OxfordPetDataset:
         self.val_raw = self.val_raw.map(lambda example: mask_preprocessing(example))
         self.test_raw = self.test_raw.map(lambda example: mask_preprocessing(example))
  
-
+    def heatmaps(self):
+        # Generate heatmaps
+        self.train_raw = self.train_raw.map(lambda example: heatmap_generation(example))
+        self.val_raw = self.val_raw.map(lambda example: heatmap_generation(example))
+        self.test_raw = self.test_raw.map(lambda example: heatmap_generation(example))
 
 #############One-hot encoding#############
 # Apply one-hot encoding to a single example
@@ -133,7 +138,28 @@ def mask_preprocessing(example):
         "segmentation_mask": mask,
         "species" :species
     }
-###############################################
+############Heatmap generation############
+def heatmap_generation(example):
+    image = example["image"]
+    label = example["label"]
+    mask = example["segmentation_mask"]
+    species = example["species"]
+
+    # get heatmap for random points of animal
+    animal_mask = tf.logical_or(tf.equal(mask, 0), tf.equal(mask, 1))
+    animal_mask_pos = tf.where(animal_mask == True)
+    loc = random_point(animal_mask_pos)
+    heatmap = create_gaussian_heatmap(mask_size=mask.shape, point=loc, sigma=20)
+
+    return {
+        "image": image,
+        "label": label,
+        "segmentation_mask": mask,
+        #"heatmap": heatmap,
+        #"species" : species,
+        "image+heatmap": tf.concat([image, heatmap], axis=-1)
+    }
+###########################################
  
  
 def show_examples(train_raw, ds_info):
