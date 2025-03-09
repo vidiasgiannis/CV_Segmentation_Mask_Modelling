@@ -13,6 +13,7 @@ class OxfordPetDataset:
         self.train_raw = None
         self.val_raw = None
         self.test_raw = None
+        self.test_perturbed = None
         self.ds_info = None
         self.num_classes = None
         self.num_train_examples = 0
@@ -70,22 +71,22 @@ class OxfordPetDataset:
         self.test_raw = self.test_raw.map(lambda example: heatmap_generation(example))
 
     def first_perturb(self, std=0):
-        self.test_raw = self.test_raw.map(lambda example: first_perturbation(example, std))
+        self.test_perturbed = self.test_raw.map(lambda example: first_perturbation(example, std))
 
     def second_perturb(self, n=0):
-        self.test_raw = self.test_raw.map(lambda example: second_perturbation(example, n))
+        self.test_perturbed = self.test_raw.map(lambda example: second_perturbation(example, n))
 
     def third_perturb(self, a=1.0):
-        self.test_raw = self.test_raw.map(lambda example: third_perturbation(example, a))
+        self.test_perturbed = self.test_raw.map(lambda example: third_perturbation(example, a))
 
     def fourth_perturb(self, b=0.0):
-        self.test_raw = self.test_raw.map(lambda example: fourth_perturbation(example, b))
+        self.test_perturbed = self.test_raw.map(lambda example: fourth_perturbation(example, b))
 
     def fifth_perturb(self, p=0.0):
-        self.test_raw = self.test_raw.map(lambda example: fifth_perturbation(example, p))
+        self.test_perturbed = self.test_raw.map(lambda example: fifth_perturbation(example, p))
 
     def sixth_perturb(self, d=0):
-        self.test_raw = self.test_raw.map(lambda example: sixth_perturbation(example, d))
+        self.test_perturbed = self.test_raw.map(lambda example: sixth_perturbation(example, d))
 
 #############One-hot encoding#############
 # Apply one-hot encoding to a single example
