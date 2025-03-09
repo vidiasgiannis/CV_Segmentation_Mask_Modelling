@@ -69,6 +69,24 @@ class OxfordPetDataset:
         self.val_raw = self.val_raw.map(lambda example: heatmap_generation(example))
         self.test_raw = self.test_raw.map(lambda example: heatmap_generation(example))
 
+    def first_perturb(self, std=0):
+        self.test_raw = self.test_raw.map(lambda example: first_perturbation(example, std))
+
+    def second_perturb(self, n=0):
+        self.test_raw = self.test_raw.map(lambda example: second_perturbation(example, n))
+
+    def third_perturb(self, a=1.0):
+        self.test_raw = self.test_raw.map(lambda example: third_perturbation(example, a))
+
+    def fourth_perturb(self, b=0.0):
+        self.test_raw = self.test_raw.map(lambda example: fourth_perturbation(example, b))
+
+    def fifth_perturb(self, p=0.0):
+        self.test_raw = self.test_raw.map(lambda example: fifth_perturbation(example, p))
+
+    def sixth_perturb(self, d=0):
+        self.test_raw = self.test_raw.map(lambda example: sixth_perturbation(example, d))
+
 #############One-hot encoding#############
 # Apply one-hot encoding to a single example
 def one_hot_encoding(example, num_classes):
@@ -171,3 +189,142 @@ def get_value_counts(ds):
     label_list = [label.numpy() for _, label in ds]
     label_counts = pd.Series(label_list).value_counts(sort=True)
     print(label_counts)
+
+
+########Perturbations########
+def first_perturbation(example, std=0):
+    '''Gaussian pixel noise'''
+    image = example["image"]
+    shape = tf.shape(image)
+    std = std/255 # normalize to [0, 1]
+    noise = tf.random.normal(shape=shape, mean=0.0, stddev=std)
+    image = tf.clip_by_value(image + noise, 0.0, 1.0)
+
+    return {
+        "image": image,
+        "segmentation_mask": example["segmentation_mask"]
+    }
+
+def second_perturbation(example, n=1):
+    '''Gaussian blurring'''
+    kernel = tf.constant([
+        [1., 1., 1.],
+        [1., 1., 1.],
+        [1., 1., 1.]
+    ], dtype=tf.float32) / 9.0
+    # Reshape kernel for 2D convolution [height, width, input_channels, output_channels]
+    kernel = tf.reshape(kernel, [3, 3, 1, 1])
+    image = example["image"]
+    if len(image.shape) == 3:  # [height, width, channels]
+        image = tf.expand_dims(image, axis=0)  # Add batch dimension [1, height, width, channels]
+        
+        for _ in range(n):
+            channels = []
+            for i in range(image.shape[-1]):
+                channel = image[..., i:i+1]  # Extract single channel and keep dimensions
+                blurred = tf.nn.conv2d(channel, filters=kernel, strides=[1, 1, 1, 1], padding="SAME")
+                channels.append(blurred)
+            image = tf.concat(channels, axis=-1)
+        
+        image = tf.squeeze(image, axis=0)  # Remove batch dimension
+    else:
+        image = tf.expand_dims(tf.expand_dims(image, axis=0), axis=-1)  # [1, height, width, 1]
+        
+        for _ in range(n):
+            image = tf.nn.conv2d(image, filters=kernel, strides=[1, 1, 1, 1], padding="SAME")
+        image = tf.squeeze(tf.squeeze(image, axis=0), axis=-1)  # Remove added dimensions
+    image = tf.clip_by_value(image, 0.0, 1.0)  # Ensure valid pixel range
+
+    return {
+        "image": image,
+        "segmentation_mask": example["segmentation_mask"]
+    }
+
+def third_perturbation(example, a=1.0):
+    '''Contrast increase/decrease'''
+    image = example["image"]
+    image = tf.clip_by_value(image * a, 0.0, 1.0)  # Ensure valid pixel range
+    
+    return {
+        "image": image,
+        "segmentation_mask": example["segmentation_mask"]
+    }
+
+def fourth_perturbation(example, b=0.0):
+    '''Brightness increase/decrease'''
+    b = b / 255.0  # Normalize to [0, 1]
+    image = example["image"]
+    image = tf.clip_by_value(image + b, 0.0, 1.0)  # Ensure valid pixel range
+    
+    return {
+        "image": image,
+        "segmentation_mask": example["segmentation_mask"]
+    }
+
+def fifth_perturbation(example, p=0.0):
+    '''Occlusion of the Image Increase'''
+    image = example["image"]
+    shape = tf.shape(image)
+    height = shape[0]
+    width = shape[1]
+
+    if p == 0:
+        pass
+    else:
+        p = tf.cast(p, tf.int32)
+        y = tf.random.uniform(shape=[], minval=0, maxval=tf.maximum(1, height - p), dtype=tf.int32)
+        x = tf.random.uniform(shape=[], minval=0, maxval=tf.maximum(1, width - p), dtype=tf.int32)
+        p = tf.minimum(p, tf.minimum(height, width))
+    
+        # Create meshgrid for the occlusion area
+        y_indices = tf.range(y, y + p)
+        x_indices = tf.range(x, x + p)
+        
+        # Create grid coordinates for the occlusion
+        indices = tf.stack(tf.meshgrid(y_indices, x_indices, indexing='ij'), axis=-1)
+        indices = tf.reshape(indices, [-1, 2])
+        
+        # Add channel dimension to indices
+        channel_indices = tf.tile(tf.expand_dims(indices, 1), [1, 3, 1])
+        channel_indices = tf.concat([
+            channel_indices[:, 0, :], 
+            tf.expand_dims(tf.zeros_like(indices[:, 0]), 1)
+        ], axis=1)
+        channel_indices = tf.concat([
+            channel_indices[:, :2], 
+            tf.expand_dims(tf.ones_like(indices[:, 0]), 1)
+        ], axis=1)
+        channel_indices = tf.concat([
+            channel_indices[:, :2], 
+            tf.expand_dims(tf.ones_like(indices[:, 0]) + tf.ones_like(indices[:, 0]), 1)
+        ], axis=1)
+        mask = tf.ones_like(image)
+        zeros_patch = tf.zeros([p, p, 3])
+        indices = tf.stack([
+            tf.repeat(tf.range(y, y + p), p),
+            tf.tile(tf.range(x, x + p), [p])
+        ], axis=1)
+        zeros_flat = tf.zeros([p * p, 3])
+        mask = tf.tensor_scatter_nd_update(mask, indices, zeros_flat)
+        image = image * mask
+    
+    return {
+        "image": image,
+        "segmentation_mask": example["segmentation_mask"]
+    }
+
+def sixth_perturbation(example, d=0):
+    '''Salt and Pepper Noise'''
+    image = example["image"]
+    
+    salt_mask = tf.random.uniform(tf.shape(image)) < (d / 2.0)
+    pepper_mask = tf.random.uniform(tf.shape(image)) < (d / 2.0)
+    
+    noisy_image = tf.where(salt_mask, tf.ones_like(image), image)
+    noisy_image = tf.where(pepper_mask, tf.zeros_like(image), noisy_image)
+    
+    return {
+        "image": noisy_image,
+        "segmentation_mask": example["segmentation_mask"]
+    }
+    
