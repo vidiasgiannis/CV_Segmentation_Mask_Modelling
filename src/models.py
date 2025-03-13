@@ -204,5 +204,94 @@ def clip_segmentation_model(input_shape=(128, 128, 3)):
     return Model(inputs=input_img, outputs=outputs, name="CLIP_Segmentation")
 
 
+###################
+#     task 2d     #
+###################
+
+from tensorflow.keras.layers import Input, Resizing, Lambda, Conv2D, Conv2DTranspose, Activation, Reshape, Concatenate, UpSampling2D
+from transformers import TFCLIPVisionModel
+from tensorflow.keras.models import Model
+ 
+class CLIPEncoderLayer(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.clip_encoder = TFCLIPVisionModel.from_pretrained("openai/clip-vit-base-patch32")
+        self.clip_encoder.trainable = False
+ 
+    def call(self, inputs):
+        # The error occurs because the CLIP model expects pixel_values in NCHW format,
+        # but TensorFlow typically uses NHWC format
+        # Convert from NHWC (batch, height, width, channels) to NCHW (batch, channels, height, width)
+        pixel_values = tf.transpose(inputs, [0, 3, 1, 2])
+       
+        # Now pass the correctly formatted tensor to the CLIP encoder
+        outputs = self.clip_encoder(pixel_values=pixel_values)
+        return outputs.last_hidden_state
+       
+    # Add compute_output_shape method to help TensorFlow infer the output shape
+    def compute_output_shape(self, input_shape):
+        # The CLIP vision model output shape depends on the model configuration
+        # For clip-vit-base-patch32, with 224x224 input, the output shape is (batch_size, 50, 768)
+        # Where 50 = 49 patches (7x7) + 1 cls token, and 768 is the embedding dimension
+        batch_size = input_shape[0]
+        return (batch_size, 50, 768)
+ 
+def clip_segmentation_model(input_shape=(128, 128, 4)):
+    # Input layer for concatenated image and heatmap
+    input_total = Input(shape=input_shape, name="input_total")
+
+    # Split into image (first 3 channels) and heatmap (4th channel)
+    input_img = Lambda(lambda x: x[..., :3], name="split_image")(input_total)
+    input_heatmap = Lambda(lambda x: x[..., 3:], name="split_heatmap")(input_total)
+
+    # Process image through CLIP encoder
+    x = Resizing(224, 224, name="resize_image")(input_img)
+    
+    def clip_normalize(x):
+        mean = [0.48145466, 0.4578275, 0.40821073]
+        std = [0.26862954, 0.26130258, 0.27577711]
+        x_normalized = tf.stack([
+            (x[..., 0] - mean[0]) / std[0],
+            (x[..., 1] - mean[1]) / std[1],
+            (x[..., 2] - mean[2]) / std[2]
+        ], axis=-1)
+        return x_normalized
+    x = Lambda(clip_normalize, name="clip_normalization")(x)
+    
+    # CLIP encoder
+    clip_encoder = CLIPEncoderLayer()
+    clip_features = clip_encoder(x)
+    
+    # Extract patch features and reshape
+    patch_features = Lambda(lambda x: x[:, 1:, :], name="remove_cls_token")(clip_features)
+    features = Reshape((7, 7, 768), name="reshape_features")(patch_features)
+
+    # Process heatmap: Resize to encoder's spatial dimensions and project channels
+    heatmap = Resizing(7, 7, name="resize_heatmap")(input_heatmap)
+    heatmap_projected = Conv2D(768, (1, 1), activation='relu', name="heatmap_projection")(heatmap)
+
+    # Integrate heatmap with encoder features
+    features_combined = layers.Add(name="features_heatmap_merge")([features, heatmap_projected])
+
+    # Decoder (unchanged from original except input now includes heatmap)
+    x = Conv2D(256, 3, padding='same', activation='relu')(features_combined)
+    x = UpSampling2D(size=(2, 2))(x)
+    x = Conv2D(128, 3, padding='same', activation='relu')(x)
+    x = UpSampling2D(size=(2, 2))(x)
+    x = Conv2D(64, 3, padding='same', activation='relu')(x)
+    x = UpSampling2D(size=(2, 2))(x)
+    x = Conv2D(32, 3, padding='same', activation='relu')(x)
+    x = UpSampling2D(size=(2, 2))(x)
+
+    # Final output layer
+    outputs = Conv2D(1, 1, activation='softmax')(x)
+
+    # Resize output to original input size if needed
+    if input_shape[0] != 224 or input_shape[1] != 224:
+        outputs = Resizing(input_shape[0], input_shape[1])(outputs)
+
+    return Model(inputs=input_total, outputs=outputs, name="CLIP_Segmentation_with_Heatmap")
+
+
 
 

@@ -1,12 +1,7 @@
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from tensorflow import keras
-from tensorflow.keras import layers
-from keras import callbacks
-from point_segmentation import random_point, create_gaussian_heatmap
+from point_segmentation import random_loc, create_gaussian_heatmap, mask_heat_modification
  
 class OxfordPetDataset:
     def __init__(self):
@@ -128,8 +123,7 @@ def resize_norm(example, resize_shape):
 # masks: border -> background
 def border_to_background(mask):
     threes_mask = tf.equal(mask, 3)
-    twos = tf.ones_like(mask) * 2
-    mask = tf.where(threes_mask, twos, mask)
+    mask = tf.where(threes_mask, tf.cast(2, mask.dtype), mask)  # Directly replacing 3s with 2s
     
     return mask
 
@@ -137,10 +131,19 @@ def border_to_background(mask):
 def animal_change(mask, species=1):
     if species == 0:
         ones_mask = tf.equal(mask, 1)
-        zeros = tf.zeros_like(mask)
-        mask = tf.where(ones_mask, zeros, mask)
+        mask = tf.where(ones_mask, tf.cast(0, mask.dtype), mask)
     
     return mask
+
+def swap_0_2(mask):
+    twos_mask = tf.equal(mask, 2)
+    zeros_mask = tf.equal(mask, 0)
+
+    mask = tf.where(twos_mask, tf.cast(0, mask.dtype), mask)
+    mask = tf.where(zeros_mask, tf.cast(2, mask.dtype), mask)
+    
+    return mask
+
 
 def mask_preprocessing(example):
     mask = example["segmentation_mask"]
@@ -150,6 +153,7 @@ def mask_preprocessing(example):
 
     mask = border_to_background(mask)
     mask = animal_change(mask, species)
+    mask = swap_0_2(mask)
 
     return {
         "image": image,
@@ -157,40 +161,28 @@ def mask_preprocessing(example):
         "segmentation_mask": mask,
         "species" :species
     }
-############Heatmap generation############
+############Heatmap generation ---> Mask heat modification############
 def heatmap_generation(example):
     image = example["image"]
     label = example["label"]
-    mask = example["segmentation_mask"]
+    original_mask = example["segmentation_mask"]
     species = example["species"]
 
     # get heatmap for random points of animal
-    animal_mask = tf.logical_or(tf.equal(mask, 0), tf.equal(mask, 1))
-    animal_mask_pos = tf.where(animal_mask == True)
-    loc = random_point(animal_mask_pos)
-    heatmap = create_gaussian_heatmap(mask_size=mask.shape, point=loc, sigma=20)
+    location = random_loc(mask_shape=original_mask.shape)
+    heatmap = create_gaussian_heatmap(mask_shape=original_mask.shape, loc=location, sigma=20)
+    mask = mask_heat_modification(original_mask, location)
 
     return {
         "image": image,
         "label": label,
         "segmentation_mask": mask,
-        #"heatmap": heatmap,
-        #"species" : species,
+        "original_mask": original_mask,
+        "location": location,
+        "heatmap": heatmap,
+        "species" : species,
         "image+heatmap": tf.concat([image, heatmap], axis=-1)
     }
-###########################################
- 
- 
-def show_examples(train_raw, ds_info):
-    """Displays example images from the dataset."""
-    tfds.show_examples(train_raw, ds_info, image_key='image')
- 
-def get_value_counts(ds):
-    """Prints the count of each class label in the given dataset."""
-    label_list = [label.numpy() for _, label in ds]
-    label_counts = pd.Series(label_list).value_counts(sort=True)
-    print(label_counts)
-
 
 ########Perturbations########
 def first_perturbation(example, std=0):
@@ -329,3 +321,14 @@ def sixth_perturbation(example, d=0):
         "segmentation_mask": example["segmentation_mask"]
     }
     
+
+###########################################
+def show_examples(train_raw, ds_info):
+    """Displays example images from the dataset."""
+    tfds.show_examples(train_raw, ds_info, image_key='image')
+ 
+def get_value_counts(ds):
+    """Prints the count of each class label in the given dataset."""
+    label_list = [label.numpy() for _, label in ds]
+    label_counts = pd.Series(label_list).value_counts(sort=True)
+    print(label_counts)
